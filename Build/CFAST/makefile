@@ -64,6 +64,7 @@ setup_win:
 	$(FCOMPL) -c $(FFLAGS) $<
 .f90.o:
 	$(FCOMPL) -c $(FFLAGS) $<
+	#$(FCOMPL) -c $(FFLAGS) ../../../Source/CFAST/c_socket_handler.so $<
 .f90.obj:
 	$(FCOMPL) -c $(FFLAGS) $<
 
@@ -107,7 +108,7 @@ gnu_linux_64 : FCOMPL = gfortran
 gnu_linux_64 : LFLAGS = 
 gnu_linux_64 : obj = cfast7_linux_64
 gnu_linux_64 : $(objfgnu)
-	$(FCOMPL) $(FFLAGS) -o $(obj) $(objfgnu)
+	$(FCOMPL) $(FFLAGS) -o $(obj) $(objfgnu) ./c_socket_handler.so
 
 # gnu linux debug
 gnu_linux_64_db : FFLAGS = -O0 -Og -finit-local-zero -ffpe-trap=invalid,zero,overflow -fbacktrace $(GITINFOGNU)

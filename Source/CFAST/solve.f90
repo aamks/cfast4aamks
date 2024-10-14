@@ -2,6 +2,7 @@ module solve_routines
 
     use precision_parameters
 
+    use iso_c_binding
     use conduction_routines, only: conduction
     use convection_routines, only: convection
     use debug_routines, only: output_spreadsheet_residuals
@@ -38,7 +39,7 @@ module solve_routines
     use room_data, only: n_rooms, roominfo, n_cons, surface_connections, n_vcons, vertical_connections, &
         exterior_ambient_temperature, exterior_abs_pressure, pressure_ref, pressure_offset, relative_humidity, iwbound
     use setup_data, only: iofilo, iofill, initializeonly, stime, i_time_step, time_end, deltat, print_out_interval, &
-        smv_out_interval, ss_out_interval, nokbd, stopfile, queryfile, cfast_version, errormessage
+        smv_out_interval, ss_out_interval, nokbd, stopfile, queryfile, cfast_version, errormessage, datapath
     use smkview_data, only: smv_room, smv_xfire, smv_yfire, smv_zfire, smv_relp, smv_zlay, smv_tu, smv_tl, smv_qdot, smv_height
     use solver_data, only: maxteq, rpar2, ipar2, p, pold, pdold, pinit, told, dt, aptol, atol, rtol, rptol, awtol, rwtol, algtol, &
         nofp, nequals, nofprd, nofwt, noftu, noftl, nofvu, nofoxyu, nofoxyl, ndisc, discon, stpmin, stpminflag, stpmin_cnt, &
@@ -55,6 +56,79 @@ module solve_routines
     contains
 
 ! --------------------------- initial_solution -------------------------------------------
+    
+    !SECTION runtime ventptr change subroutines
+    SUBROUTINE GetConnection(connection)
+
+        interface
+            function connect_to_socket() bind(C, name="connect_to_socket")
+                use iso_c_binding
+                implicit none
+                integer(c_int) :: connect_to_socket
+            end function connect_to_socket
+        end interface 
+
+        integer(c_int) :: connection
+        connection = connect_to_socket()
+
+        RETURN
+    END SUBROUTINE GetConnection
+    
+    SUBROUTINE SendMsg(connection)
+
+        interface
+
+            subroutine send_message(connection) bind(C, name="send_message")
+                use iso_c_binding
+                implicit none
+                integer(c_int), value :: connection
+            end subroutine send_message
+
+        end interface
+
+        integer connection
+
+        call send_message(connection)
+        
+        RETURN
+    END SUBROUTINE SendMsg
+    
+    SUBROUTINE ReceiveMsg(connection)
+        interface
+            subroutine receive_message(connection) bind(C, name="receive_message")
+                use iso_c_binding
+                implicit none
+                integer(c_int), value :: connection
+            end subroutine receive_message
+
+        end interface
+
+        integer connection
+
+        call receive_message(connection)
+
+        RETURN
+    END SUBROUTINE ReceiveMsg 
+    
+    SUBROUTINE CloseConnection(connection)
+
+        interface
+
+            subroutine close_connection(connection) bind(C, name="close_connection")
+                use iso_c_binding
+                implicit none
+                integer(c_int), value :: connection
+            end subroutine close_connection
+
+        end interface
+
+        integer(c_int) :: connection
+        ! Close the socket connection
+        call close_connection(connection)
+
+        RETURN
+    END SUBROUTINE CloseConnection
+    !END SECTION runtime ventptr change subroutines
 
     subroutine initial_solution(t,pdold,pdzero,rpar,ipar)
 
@@ -223,19 +297,44 @@ module solve_routines
     integer, parameter :: lrwork = 40+(maxord+4)*maxeq+maxeq**2
     integer, parameter :: liw = 20+maxeq
     integer, parameter :: all = 1, some = 0
+    character(len=80), parameter :: filename = 'times.txt'
+    integer :: unit_number
+
 
     real(eb) :: rwork(lrwork), rpar(1)
     integer :: iwork(liw), info(15), ipar(3), info2(15)
     real(eb) :: pprime(maxteq), pdnew(maxteq), vatol(maxeq), vrtol(maxeq)
     real(eb) :: pdzero(maxteq) = 0.0_eb
     logical :: iprint, ismv, exists, ispread,firstpassforsmokeview
-    integer :: idid, i, n_odes, nfires, icode, ieqmax, idisc, ires, idsave, ifdtect, ifobj, n
+    integer :: idid, i, n_odes, nfires, icode, ieqmax, idisc, ires, idsave, ifdtect, ifobj, n, ipts
     real(eb) :: ton, toff, tpaws, tstart, tdout, dprint, dplot, dspread, t, tprint, td, tsmv, tspread, tout,  &
         ostptime, tdtect, tobj
     integer :: first_time
     integer :: stopunit, ios
     
     type(fire_type), pointer :: fireptr
+    
+    ! SECTION runtime ventptr change variables definition and establishing socket connection
+    integer(c_int) :: connection
+    integer ::  j, k, end_index
+    character(len=3072) message
+    character(len=1) :: character_char
+    integer :: character_ascii
+    character(len=3072) :: temp_message
+    character(len=100) line
+    character(len=3072), dimension(3072) :: keys
+    real(eb) :: values(3072)
+    integer :: num_entries, comma_index
+    character(len=3072) :: key, value, trimmed_value
+    character(len=100) :: doorsOpeningLevelFileName
+    character(len=200) :: doorsOpeningLevelFile
+    type(vent_type), pointer :: ventptr
+    num_entries = 0
+    doorsOpeningLevelFileName = 'doors_opening_level_frame.txt'
+    doorsOpeningLevelFile = trim(datapath) // trim(doorsOpeningLevelFileName)
+    
+    call GetConnection(connection)
+    ! END SECTION runtime ventptr change variables definition and establishing socket connection
 
     call cptime(toff)
     ires = 0
@@ -365,6 +464,7 @@ module solve_routines
 
     do while (idid>=0 .and. t+0.000001_eb<=tstop)
 
+
         ! DASSL equation with most error
         ieqmax = 0
 
@@ -476,6 +576,98 @@ module solve_routines
                 ! reset incremental FED data
                 targetinfo(1:mxtarg)%dfed_gas = 0.0_eb
                 targetinfo(1:mxtarg)%dfed_heat = 0.0_eb
+
+                ! SECTION send message via socket
+                call SendMsg(connection)
+                ! END SECTION send message via socket
+
+                ! SECTION receive message containing hole opening % from socket and change ventptr%f holes opening
+                call ReceiveMsg(connection)
+
+                open(unit=10, file=trim(doorsOpeningLevelFile), status='old', action='read')
+                read(10, '(A)', iostat=ios) message
+                close(10)
+                i=1
+                character_char = CHAR(ichar(message(i:i)))
+                character_ascii = ichar(character_char)
+                !print *, 'Character at position 0 is ', character_char, ' with ASCII value ', character_ascii
+
+                if (character_ascii == 0) then
+                    print *, "Current time:"
+                    print *, t
+                    print *, 'No data found in the doors_opening_level.txt file'
+                else
+                    do while (len(trim(message)) > 0)
+
+                        comma_index = index(message, ',')
+                        if (comma_index > 0) then
+                            key = trim(adjustl(message(:comma_index-1)))
+                            message = adjustl(message(comma_index+1:))
+                        else
+                            if (index(message, '.') .EQ. 0) then 
+                                ! integer type - for example 0 or 1 
+                                key = adjustl(message(:index(message, '=')+1))
+                            else
+                                !decimal type- for example 0.5 or 0.8 
+                                key = adjustl(message(:index(message, '=')+3))
+                            endif  
+                            message = ""
+                        end if
+                        
+                        comma_index = index(key, '=')
+                        if (comma_index > 0) then
+                            value = trim(key(comma_index+1:))
+                            key = trim(key(:comma_index-1))
+                        else
+                            value = ""
+                        end if
+                
+                        ! Add key, value pair to dict
+                        num_entries = num_entries + 1
+                        keys(num_entries) = key
+                        
+                        !print *, value
+
+                        read(value, *) values(num_entries)
+
+                    end do
+
+                    ! Display the contents of the dictionary
+                    print *, "Current time:"
+                    print *, t
+
+                    print *, "Opening of the following doors will be changed to:"
+                    do i = 1, num_entries
+                        print *, trim(keys(i)), "=", values(i)
+                    end do
+                         
+                    !change ventptr%f array (hole oppening percentage)
+                    do i = 1, n_hvents
+                        ventptr=>hventinfo(i)
+                        do j = 1, num_entries
+                            if (ventptr%CFAST_TYPE%ID == trim(keys(j))) then
+                                do k = 1, ventptr%npoints
+                                    if (nint(t) == ventptr%t(k)) then
+                                        if (k /= ventptr%npoints) then
+                                            !if k is the last element of f() table (k==ventptr%npoints)
+                                            !there is no f(k+1) element so we don't want to change f(k+1) element
+                                            ventptr%f(k+1) = values(j)
+                                        end if
+                                    end if
+                                end do
+                            end if
+                        end do
+                    end do
+                    
+                    do i = 1, num_entries
+                        values(i) = 0
+                        keys(i) = ''
+                    end do
+                    
+                    num_entries=0 
+                end if            
+                ! END SECTION receive message containing hole opening % from socket and change ventptr%f holes opening 
+
             end if
 
             ! diagnostic output
@@ -672,6 +864,27 @@ module solve_routines
             end if
         end if
     end do
+    
+    ! SECTION send last message via socket
+        call SendMsg(connection)
+        call CloseConnection(connection)
+    ! END SECTION send last message via socket
+
+    unit_number = 10
+    open(unit=unit_number, file=filename, status='replace', action='write')
+
+
+    do i = 1, n_hvents
+        ventptr=>hventinfo(i)
+        write(unit_number, '(A, A)') ventptr%id, ' :ventptr%id'
+        do ipts = 1,400
+            write(unit_number, '(E24.16, A)') ventptr%t(ipts), ' :time'
+            write(unit_number, '(E24.16, A)') ventptr%f(ipts), ' :fraction'
+        end do
+    end do
+
+    close(unit_number)
+
 
     return
 
@@ -1653,5 +1866,6 @@ module solve_routines
     return
 
     end subroutine update_data
-
+    
+    
 end module solve_routines
