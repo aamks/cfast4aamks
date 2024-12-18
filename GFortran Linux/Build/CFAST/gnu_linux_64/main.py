@@ -46,7 +46,7 @@ def start_server():
         f2.close()
 
 
-        connection.send(msg.encode())
+        connection.send("ok")
         
         message_from_client = connection.recv(1024).decode()
         print(f"Received from client: {message_from_client}")
