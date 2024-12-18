@@ -38,7 +38,14 @@ def start_server():
     loop_repetition_number = 10
     for time in range(loop_repetition_number-1):
 
+
         msg = input("Server msg: ")
+
+        f2 = open(r"doors_opening_level_frame.txt", "w+")
+        f2.write(msg)
+        f2.close()
+
+
         connection.send(msg.encode())
         
         message_from_client = connection.recv(1024).decode()
