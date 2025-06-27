@@ -67,53 +67,48 @@ module solve_routines
                 integer(c_int) :: connect_to_socket
             end function connect_to_socket
         end interface 
-
         integer(c_int) :: connection
         connection = connect_to_socket()
-
         RETURN
+
     END SUBROUTINE GetConnection
     
-    SUBROUTINE SendMsg(connection)
+     SUBROUTINE SendMsg(connection)
 
         interface
-
             subroutine send_message(connection) bind(C, name="send_message")
                 use iso_c_binding
                 implicit none
                 integer(c_int), value :: connection
             end subroutine send_message
-
         end interface
-
         integer connection
-
         call send_message(connection)
-        
         RETURN
+
     END SUBROUTINE SendMsg
-    
+
+
     SUBROUTINE ReceiveMsg(connection)
+
         interface
             subroutine receive_message(connection) bind(C, name="receive_message")
                 use iso_c_binding
                 implicit none
                 integer(c_int), value :: connection
             end subroutine receive_message
-
         end interface
-
         integer connection
-
         call receive_message(connection)
 
         RETURN
+
     END SUBROUTINE ReceiveMsg 
-    
+
+
     SUBROUTINE CloseConnection(connection)
 
         interface
-
             subroutine close_connection(connection) bind(C, name="close_connection")
                 use iso_c_binding
                 implicit none
@@ -128,6 +123,7 @@ module solve_routines
 
         RETURN
     END SUBROUTINE CloseConnection
+
     !END SECTION runtime ventptr change subroutines
 
     subroutine initial_solution(t,pdold,pdzero,rpar,ipar)
@@ -307,7 +303,7 @@ module solve_routines
     real(eb) :: pdzero(maxteq) = 0.0_eb
     logical :: iprint, ismv, exists, ispread,firstpassforsmokeview
     integer :: idid, i, n_odes, nfires, icode, ieqmax, idisc, ires, idsave, ifdtect, ifobj, n, ipts
-    real(eb) :: ton, toff, tpaws, tstart, tdout, dprint, dplot, dspread, t, tprint, td, tsmv, tspread, tout,  &
+    real(eb) :: ton, toff, tpaws, tstart, tdout, dprint, dplot, dspread, dsocket, tsocket, t, tprint, td, tsmv, tspread, tout,  &
         ostptime, tdtect, tobj
     integer :: first_time
     integer :: stopunit, ios
@@ -345,6 +341,7 @@ module solve_routines
     dprint = abs(print_out_interval)
     dplot = abs(smv_out_interval)
     dspread = abs(ss_out_interval)
+    dsocket=1
     rpar(1) = rptol
 
     ! initialize print and output times
@@ -352,6 +349,7 @@ module solve_routines
     tprint = t
     tsmv = t
     tspread = t
+    tsocket = 0
     idid = 1
     firstpassforsmokeview = .true.
     first_time = 1
@@ -463,7 +461,6 @@ module solve_routines
     numresd = 0
 
     do while (idid>=0 .and. t+0.000001_eb<=tstop)
-
 
         ! DASSL equation with most error
         ieqmax = 0
@@ -577,97 +574,6 @@ module solve_routines
                 targetinfo(1:mxtarg)%dfed_gas = 0.0_eb
                 targetinfo(1:mxtarg)%dfed_heat = 0.0_eb
 
-                ! SECTION send message via socket
-                call SendMsg(connection)
-                ! END SECTION send message via socket
-
-                ! SECTION receive message containing hole opening % from socket and change ventptr%f holes opening
-                call ReceiveMsg(connection)
-
-                open(unit=10, file=trim(doorsOpeningLevelFile), status='old', action='read')
-                read(10, '(A)', iostat=ios) message
-                close(10)
-                i=1
-                character_char = CHAR(ichar(message(i:i)))
-                character_ascii = ichar(character_char)
-                !print *, 'Character at position 0 is ', character_char, ' with ASCII value ', character_ascii
-
-                if (character_ascii == 0) then
-                    print *, "Current time:"
-                    print *, t
-                    print *, 'No data found in the doors_opening_level.txt file'
-                else
-                    do while (len(trim(message)) > 0)
-
-                        comma_index = index(message, ',')
-                        if (comma_index > 0) then
-                            key = trim(adjustl(message(:comma_index-1)))
-                            message = adjustl(message(comma_index+1:))
-                        else
-                            if (index(message, '.') .EQ. 0) then 
-                                ! integer type - for example 0 or 1 
-                                key = adjustl(message(:index(message, '=')+1))
-                            else
-                                !decimal type- for example 0.5 or 0.8 
-                                key = adjustl(message(:index(message, '=')+3))
-                            endif  
-                            message = ""
-                        end if
-                        
-                        comma_index = index(key, '=')
-                        if (comma_index > 0) then
-                            value = trim(key(comma_index+1:))
-                            key = trim(key(:comma_index-1))
-                        else
-                            value = ""
-                        end if
-                
-                        ! Add key, value pair to dict
-                        num_entries = num_entries + 1
-                        keys(num_entries) = key
-                        
-                        !print *, value
-
-                        read(value, *) values(num_entries)
-
-                    end do
-
-                    ! Display the contents of the dictionary
-                    print *, "Current time:"
-                    print *, t
-
-                    print *, "Opening of the following doors will be changed to:"
-                    do i = 1, num_entries
-                        print *, trim(keys(i)), "=", values(i)
-                    end do
-                         
-                    !change ventptr%f array (hole oppening percentage)
-                    do i = 1, n_hvents
-                        ventptr=>hventinfo(i)
-                        do j = 1, num_entries
-                            if (ventptr%CFAST_TYPE%ID == trim(keys(j))) then
-                                do k = 1, ventptr%npoints
-                                    if (nint(t) == ventptr%t(k)) then
-                                        if (k /= ventptr%npoints) then
-                                            !if k is the last element of f() table (k==ventptr%npoints)
-                                            !there is no f(k+1) element so we don't want to change f(k+1) element
-                                            ventptr%f(k+1) = values(j)
-                                        end if
-                                    end if
-                                end do
-                            end if
-                        end do
-                    end do
-                    
-                    do i = 1, num_entries
-                        values(i) = 0
-                        keys(i) = ''
-                    end do
-                    
-                    num_entries=0 
-                end if            
-                ! END SECTION receive message containing hole opening % from socket and change ventptr%f holes opening 
-
             end if
 
             ! diagnostic output
@@ -706,6 +612,111 @@ module solve_routines
             call output_spreadsheet(t)
             return
         end if
+
+        ! SECTION send message via socket
+
+        if (t>min(tsocket,tstop)) then
+            tsocket = tsocket + dsocket
+
+            call SendMsg(connection)
+            ! END SECTION send message via socket
+
+            ! SECTION receive message containing hole opening % from socket and change ventptr%f holes opening
+            call ReceiveMsg(connection)
+
+            open(unit=10, file=trim(doorsOpeningLevelFile), status='old', action='read')
+            read(10, '(A)', iostat=ios) message
+            close(10)
+            i=1
+            character_char = CHAR(ichar(message(i:i)))
+            character_ascii = ichar(character_char)
+            !print *, 'Character at position 0 is ', character_char, ' with ASCII value ', character_ascii
+
+            if (character_ascii == 0) then
+                print *, "Current time:"
+                print *, t
+                print *, 'No data found in the doors_opening_level.txt file'
+            else
+                do while (len(trim(message)) > 0)
+
+                    comma_index = index(message, ',')
+                    if (comma_index > 0) then
+                        key = trim(adjustl(message(:comma_index-1)))
+                        message = adjustl(message(comma_index+1:))
+                    else
+                        if (index(message, '.') .EQ. 0) then 
+                            ! integer type - for example 0 or 1 
+                            key = adjustl(message(:index(message, '=')+1))
+                        else
+                            !decimal type- for example 0.5 or 0.8 
+                            key = adjustl(message(:index(message, '=')+3))
+                        endif  
+                        message = ""
+                    end if
+                    
+                    comma_index = index(key, '=')
+                    if (comma_index > 0) then
+                        value = trim(key(comma_index+1:))
+                        key = trim(key(:comma_index-1))
+                    else
+                        value = ""
+                    end if
+            
+                    ! Add key, value pair to dict
+                    num_entries = num_entries + 1
+                    keys(num_entries) = key
+                    
+                    !print *, value
+
+                    read(value, *) values(num_entries)
+
+                end do
+
+                ! Display the contents of the dictionary
+                print *, "Current time:"
+                print *, t
+
+                !print *, "Opening of the following doors will be changed to:"
+                !do i = 1, num_entries
+                !    print *, trim(keys(i)), "=", values(i)
+                !end do
+                     
+                !change ventptr%f array (hole oppening percentage)
+                do i = 1, n_hvents
+                    ventptr=>hventinfo(i)
+                    !print *, "ssssssssssss", "=", ventptr%CFAST_TYPE%ID
+                    !print *, ventptr%npoints
+                    !print *, ventptr%t(1)
+                    !print *, ventptr%t(ventptr%npoints)
+                    !print *, "sdasdfsdf"
+                    !print *, ventptr%opening_type
+
+                    do j = 1, num_entries
+                        if (ventptr%CFAST_TYPE%ID == trim(keys(j))) then
+                            ventptr%t(1) = ventptr%t(2)
+                            ventptr%f(1) = ventptr%f(2)
+
+                            ventptr%t(2) = nint(t+1)
+                            ventptr%f(2) = values(j)
+                        end if
+                        !if (ventptr%CFAST_TYPE%ID == trim(keys(j))) then
+                        !    do k = nint(t+1), ventptr%npoints-1
+                        !        ventptr%f(k) = values(j)
+                        !    end do
+                        !end if
+                    end do
+                    
+                end do
+                
+                do i = 1, num_entries
+                    values(i) = 0
+                    keys(i) = ''
+                end do
+                
+                num_entries=0 
+            end if            
+            ! END SECTION receive message containing hole opening % from socket and change ventptr%f holes opening 
+        end if  
 
         if (t<tstop) then
             idset = 0

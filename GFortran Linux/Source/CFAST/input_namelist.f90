@@ -610,9 +610,9 @@
 
     subroutine set_defaults
 
-    ceiling_matl_id         = 'NULL'
-    wall_matl_id            = 'NULL'
-    floor_matl_id           = 'NULL'
+    ceiling_matl_id         = 'OFF'
+    wall_matl_id            = 'OFF'
+    floor_matl_id           = 'OFF'
     ceiling_thickness       = 0.0_eb
     wall_thickness          = 0.0_eb
     floor_thickness         = 0.0_eb
@@ -1732,12 +1732,18 @@ continue
             ! Wall vent
             if (trim(type) == 'WALL') then
                 counter1=counter1+1
-                
+
                 call find_comp_idxes
 
-                imin = min(i,j)
-                jmax = max(i,j)
-                
+! only change vent order if one of the compartments is the outside
+                if(i<mxrooms-1 .and. j<mxrooms-1) then
+                   imin = i
+                   jmax = j
+                else
+                   imin = min(i,j)
+                   jmax = max(i,j)
+                endif
+
                 if (imin>mxrooms-1.or.jmax>mxrooms.or.imin==jmax) then
                     write (errormessage,5070) i, j
                     call cfastexit('read_vent',5)

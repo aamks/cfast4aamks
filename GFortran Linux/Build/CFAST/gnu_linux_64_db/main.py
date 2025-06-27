@@ -40,7 +40,7 @@ def start_server():
 
 
         msg = input("Server msg: ")
-        #msg = 'd2=1,d4=1,d5=1,d7=1'
+        # msg = 'd111=0,d114=0'
         f2 = open(r"doors_opening_level_frame.txt", "w+")
         f2.write(msg)
         f2.close()

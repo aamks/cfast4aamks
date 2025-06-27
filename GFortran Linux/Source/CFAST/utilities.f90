@@ -8,7 +8,7 @@
     use room_data, only: nwpts, slab_splits, iwbound
     use setup_data, only: ncol, iofill, rundat, nokbd, initializeonly, debugging, validation_flag, outputformat, &
         netheatflux, ssoutoptions, cdata_accumulator, cdata_preprocessor, cdata_statistics, cdata_diagnostics, &
-        errormessage 
+        errormessage, listoutput 
 
     implicit none
 
@@ -497,8 +497,9 @@
     !     d to turn on debugging writes
     !     f/c = printed output options, full/compact. default is full
     !     g = run cdata diagnositic on the specified input file
-    !	  i = do initialization only
+    !     i = do initialization only
     !     k = do not access keyboard
+    !     l = list interim output to the screen
     !     n = output just target fluxes relative to ambient (like -v but smoke still in od)
     !     o = output "solver.ini" options into the file solve.ini
     !     p = run cdata preprocessor on the specified input file
@@ -525,6 +526,7 @@
 
     if (cmdflag('A',iopt)/=0) cdata_accumulator = .true.
     if (cmdflag('K',iopt)/=0) nokbd = .true.
+    if (cmdflag('L',iopt)/=0) listoutput = .true.
     if (cmdflag('I',iopt)/=0) initializeonly = .true.
     if (cmdflag('D',iopt)/=0) debugging = .true.
     if (cmdflag('V',iopt)/=0) validation_flag = .true.
@@ -793,10 +795,10 @@
     ! implement the simple open/close function for vents.
     ! This is done with a simple, linear interpolation.
     ! The opening arrays are built into the vent data structures and are of the form
-    !		(1) Is start of time to change
-    !		(2) Is the initial fraction (set in HVENT, VVENT and MVENT)
-    !		(3) Is the time to complete the change, Time+Decay_time, and
-    !		(4) Is the final fraction
+    !       (1) Is start of time to change
+    !       (2) Is the initial fraction (set in HVENT, VVENT and MVENT)
+    !       (3) Is the time to complete the change, Time+Decay_time, and
+    !       (4) Is the final fraction
 
     ! The open/close function is done in the physical/mode interface, wall_flow, vertical_flow and mechanical_flow
     
@@ -877,6 +879,9 @@
     type(target_type), pointer :: targptr
 
     ! check vent triggering by time
+
+
+
     if (ventptr%opening_type==trigger_by_time) then
         fraction = 1.0_eb
         if (ventptr%npoints>0) then
@@ -894,6 +899,7 @@
                         dy = ventptr%f(i)-ventptr%f(i-1)
                         dydt = dy / dt
                         fraction = ventptr%f(i-1) + dydt*dtfull
+                        !print *, fraction, "=", ventptr%CFAST_TYPE%ID
                         return
                     end if
                 end do
@@ -973,7 +979,7 @@
 
     real(eb) function vfraction (vtype, ventptr, time)
 
-    !	This is the open/close function for vent flow
+    !   This is the open/close function for vent flow
 
     type(vent_type) :: ventptr
     type(target_type), pointer :: targptr

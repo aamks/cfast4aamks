@@ -51,27 +51,31 @@ void send_message(int sockfd) {
     }
 }
 
-
-char *receive_message(int sockfd) {
-    char *buffer = (char *)malloc(BUFFER_SIZE * sizeof(char));
-    if (buffer == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    ssize_t bytes_received = recv(sockfd, buffer, BUFFER_SIZE - 1, 0);
-    if (bytes_received == -1) {
-        perror("Receiving message failed");
-        free(buffer);
-        exit(EXIT_FAILURE);
-    } else if (bytes_received == 0) {
-        printf("Connection closed by peer.\n");
-    } else {
-        buffer[bytes_received] = '\0';
-    }
-
-    return buffer;
+void receive_message(int sockfd) {
 }
+
+
+
+// char *receive_message(int sockfd) {
+//     char *buffer = (char *)malloc(BUFFER_SIZE * sizeof(char));
+//     if (buffer == NULL) {
+//         perror("Memory allocation failed");
+//         exit(EXIT_FAILURE);
+//     }
+
+//     ssize_t bytes_received = recv(sockfd, buffer, BUFFER_SIZE - 1, 0);
+//     if (bytes_received == -1) {
+//         perror("Receiving message failed");
+//         free(buffer);
+//         exit(EXIT_FAILURE);
+//     } else if (bytes_received == 0) {
+//         printf("Connection closed by peer.\n");
+//     } else {
+//         buffer[bytes_received] = '\0';
+//     }
+
+//     return buffer;
+// }
 void c_free(void *ptr) {
     free(ptr);
 }

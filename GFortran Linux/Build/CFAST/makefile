@@ -17,14 +17,16 @@ ifeq ($(shell echo "check_quotes"),"check_quotes")
   GIT_HASH := $(shell ..\..\scripts\githash)
   GIT_DATE := $(shell ..\..\scripts\gitlog)
   BUILD_DATE := $(shell date /t) $(shell time /t)
+  GIT_BRANCH := $(shell ..\..\scripts\gitbranch)
 else
 # linux/osx
   GIT_HASH := $(shell git describe --long --dirty)
   GIT_DATE := $(shell git log -1 --format=%cd)
   BUILD_DATE := $(shell date "+%b %d, %Y  %T")
+  GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 endif
 
-GITINFO_BASE=-DGITHASH_PP=\"$(GIT_HASH)\" -DGITDATE_PP=\""$(GIT_DATE)\""  -DVERSION_PP=\""$(VERSION)\""
+GITINFO_BASE=-DGITHASH_PP=\"$(GIT_HASH)-$(GIT_BRANCH)\" -DGITDATE_PP=\""$(GIT_DATE)\""  -DVERSION_PP=\""$(VERSION)\""
 GITINFO=-fpp $(GITINFO_BASE) -DBUILDDATE_PP=\""$(BUILD_DATE)\""
 GITINFOGNU=-cpp $(GITINFO_BASE) -DBUILDDATE_PP=\""$(BUILD_DATE)\""
 
@@ -115,7 +117,7 @@ gnu_linux_64_db : FCOMPL = gfortran
 gnu_linux_64_db : LFLAGS = 
 gnu_linux_64_db : obj = cfast7_linux_64_db
 gnu_linux_64_db : $(objfgnu)
-	$(FCOMPL) $(FFLAGS) -o $(obj) $(objfgnu)
+	$(FCOMPL) $(FFLAGS) -o $(obj) $(objfgnu) ./c_socket_handler.so
 
 # 64 bit
 intel_linux_64 : FFLAGS = -m64 -O0 -static -gen-interfaces -warn interfaces -traceback $(GITINFO)
@@ -126,7 +128,7 @@ intel_linux_64 : $(objf)
 	$(FCOMPL) $(LFLAGS) -o $(obj) $(objf)
 
 #intel_linux_64_db : FFLAGS = -m64 -check all -ftrapuv -warn unused -gen-interfaces -warn interfaces -O0 -WB -traceback -g -fpe0 -fp-model strict -debug full
-intel_linux_64_db : FFLAGS = -m64 -check -warn unused -O0 -init=snan -static -WB -traceback -g -fpe0 -fp-model strict -stand:f08 $(GITINFO)
+intel_linux_64_db : FFLAGS = -m64 -check -warn unused -O0 -init=snan -static -WB -traceback -g -fpe0 -fp-model strict $(GITINFO)
 intel_linux_64_db : LFLAGS = -static-intel
 intel_linux_64_db : FCOMPL = ifx
 intel_linux_64_db : obj = cfast7_linux_64_db
